@@ -1,0 +1,109 @@
+#!/usr/bin/perl
+
+# Check command line arguments
+if (@ARGV != 1) {
+	die "Usage: $0 <url>\n\n";
+}
+$playlistURL = $ARGV[0];
+
+# Check URL syntax
+if ($playlistURL !~ /http:\/\/\S+\//) {
+	die "Invalid URL: $playlistURL\n\n";
+}
+
+# Format the URL to not confuse the shell
+$playlistURL =~ s/&/\\&/g;
+
+# Get the filename to expect to have downloaded
+$playlistFile = $playlistURL;
+$playlistFile =~ s/.*\///g;
+
+print "Downloading playlist...\n";
+
+`rm $playlistFile` if (-e $playlistFile);
+`wget $playlistURL`;
+
+open(PLAYLIST, $playlistFile) or die "Cannot open $playlistURL: $!\n\n";
+while(<PLAYLIST>) {
+	chomp;
+	my $line = $_;
+
+	# Skip blank and header lines
+	next if (/#EXTM3U/);
+	next if (/^\s+/);
+
+	# Now parse the EXTINF lines
+	my ($time, $artist, $album, $title, $url, $urlFile, $minutes, $seconds);
+	if (/^#EXTINF:(\d+),([^:]*):(.*)/) {
+		$time = $1;
+		$album = $2;
+		$title = $3;
+
+		# Get the URL from the next line
+		$url = <PLAYLIST>;
+		chomp $url;
+
+		# If the URL is blank, something is wrong so skip this entry
+		next if !$url;
+
+		# Format the url to not confuse the shell
+		$url =~ s/&/\\&/g;
+
+		# Now format the filename from the url
+		$urlFile = $url;
+		$urlFile =~ s/.*\///g;	# Remove leading directories and hostname
+
+		# Now format the title and album
+		$artist = $album;
+		$artist =~ s/,.*//g;
+		$artist =~ s/^\s+//g;
+		$artist =~ s/\// /g;
+		$album =~ s/.*,//;
+		$album =~ s/^\s+//;
+		$album =~ s/\// /g;
+		$title =~ s/^\s+//;
+		$title =~ s/\s+\*bmf\*\s*//g;
+		$title =~ s/\// /g;
+		$title =~ s/^([1-9])[^0-9]\s+/0$1. /;
+
+		# Now figure out the time in MM:SS
+		use integer;
+		$minutes = $time / 60;
+		no integer;
+		$seconds = $time % 60;
+		
+		# Now make the proper directories
+		mkdir($artist);
+		mkdir("$artist/$album");
+
+		# Format the proper filename with escaped spaces
+		$newFile = "$artist/$album/$title.mp3";
+		$newFile =~ s/ /\\ /g;
+		
+		# Print a status for each song
+		print "-------------------------------------------------------------\n";
+		print " Time: $minutes:$seconds ($time sec)\n";
+		print "Artst: $artist\n";
+		print "Album: $album\n";
+		print "Title: $title\n";
+		print "  URL: $url\n";
+		print " File: $urlFile\n";
+		print " Save: $newFile\n";
+		print "\n\n";
+		
+		# Now wget the file
+		`rm $urlFile` if (-e $urlFile);
+		`wget $url`;
+
+		# Now rename the file
+		`mv $urlFile $newFile`;
+
+		# Increment the song count
+		$songCount++;
+	}
+}
+close(PLAYLIST);
+
+`rm $playlistFile`;
+
+print "Success; downloaded $songCount songs.\n\n";
