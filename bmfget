@@ -58,12 +58,21 @@ while(<PLAYLIST>) {
 		$artist =~ s/,.*//g;
 		$artist =~ s/^\s+//g;
 		$artist =~ s/\// /g;
+		$artist =~ s/'/\\'/g;
+		$artist =~ s/&/\\&/g;
+		$artist =~ s/>/\\>/g;
 		$album =~ s/.*,//;
 		$album =~ s/^\s+//;
 		$album =~ s/\// /g;
+		$album =~ s/'/\\'/g;
+		$album =~ s/&/\\&/g;
+		$album =~ s/>/\\>/g;
 		$title =~ s/^\s+//;
 		$title =~ s/\s+\*bmf\*\s*//g;
 		$title =~ s/\// /g;
+		$title =~ s/'/\\'/g;
+		$title =~ s/&/\\&/g;
+		$title =~ s/>/\\>/g;
 		$title =~ s/^([1-9])[^0-9]\s+/0$1. /;
 
 		# Now figure out the time in MM:SS
