@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+use MP3::Info;
+
 # Check command line arguments
 if (@ARGV != 1) {
 	die "Usage: $0 <url>\n\n";
@@ -35,11 +37,12 @@ while(<PLAYLIST>) {
 	next if (/^\s+/);
 
 	# Now parse the EXTINF lines
-	my ($time, $artist, $album, $title, $url, $urlFile, $newFile, $minutes, $seconds);
-	if (/^#EXTINF:(\d+),([^:]*):(.*)/) {
+	my ($time, $artist, $album, $title, $trackNum, $url, $urlFile, $newFile, $minutes, $seconds);
+	if (/^#EXTINF:(\d+),([^:]*):\s*(\d+)\.\s+(.*)/) {
 		$time = $1;
 		$album = $2;
-		$title = $3;
+		$trackNum = $3;
+		$title = $4;
 
 		# Get the URL from the next line
 		$url = <PLAYLIST>;
@@ -68,7 +71,9 @@ while(<PLAYLIST>) {
 		$title =~ s/^\s+//;
 		$title =~ s/\s+\*bmf\*\s*//g;
 		$title =~ s/\// /g;
-		$title =~ s/^([1-9])[^0-9]\s+/0$1. /;
+
+		$fileNum = $trackNum;
+		$fileNum = "0$fileNum" if ($fileNum < 10);
 
 		# Now figure out the time in MM:SS
 		use integer;
@@ -77,16 +82,13 @@ while(<PLAYLIST>) {
 		$seconds = $time % 60;
 		$seconds = "0$seconds" if $seconds < 10;
 		
-		# Now make the proper directories
-		mkdir($artist);
-		mkdir("$artist/$album");
-
 		# Format the proper filename with escaped spaces
-		$newFile = "$artist/$album/$title.mp3";
+		$newFile = "$artist/$album/$fileNum. $title.mp3";
 		
 		# Print a status for each song
 		print "-------------------------------------------------------------\n";
 		print "  Time: $minutes:$seconds ($time sec)\n";
+		print " Track: $trackNum\n";
 		print "Artist: $artist\n";
 		print " Album: $album\n";
 		print " Title: $title\n";
@@ -114,8 +116,16 @@ while(<PLAYLIST>) {
 			print "ERROR!  Failure.  Downloaded " . -s $urlFile . " bytes.\n\n";
 		}
 
-		# If we got some or all of the song, rename and put into the right directory
+		# If we got some or all of the song, add the ID3 tag, rename the file
+		# and put it into the right directory
 		if (-e $urlFile && -s $urlFile) {
+			# Add the ID3 tag
+			set_mp3tag($urlFile, $title, $artist, $album, '', '', '', $trackNum);
+			
+			# Now make the proper directories
+			mkdir($artist);
+			mkdir("$artist/$album");
+
 			# Rename the file and move
 			rename($urlFile, $newFile) or die "Cannot rename $urlFile to \"$newFile\": $!\n\n";;
 
