@@ -3,19 +3,33 @@
 use Getopt::Long;
 use MP3::Info;
 
+# Set default paramters
+$retries = 3;
+$limitRate = "";
+
 # Check command line arguments
 GetOptions(
 	'u=s' => \$playlistURL,
 	'f=s' => \$playlistFile,
+	'r=i' => \$retries,
+	'l=s' => \$limitRate,
 	'v'   => \$verbose
 );
 if (!($playlistURL xor $playlistFile)) {
 	die
 		"Usage: $0 [-v] <-f playlisti | -u url>\n\n".
-		"    -v         Verbose wget output (turns error detection off)\n".
-		"    -f file    Use file as the playlist to parse\n".
-		"    -u url     Download and parse playlist from url\n\n".
+		"    -v          Verbose wget output (turns error detection off)\n".
+		"    -f file     Use file as the playlist to parse\n".
+		"    -u url      Download and parse playlist from url\n".
+		"    -r retries  Number of retries to attempt on each track\n".
+		"    -l amount   Limit the download speed to amount bytes per second.\n".
+		"                For example, '-l 20k' limits downloads to 20KB/s.\n\n".
 		"    Either the file or url must be specified, but not both.\n\n";
+}
+
+# If a rate limiter was specified, prepend the appropriate wget parameter
+if ($limitRate) {
+	$limitRate = "--limit-rate=$limitRate";
 }
 
 # If a URL was specified, download and format it
@@ -36,9 +50,9 @@ if ($playlistURL) {
 	print "Downloading playlist...\n";
 	`rm $playlistFile` if (-e $playlistFile);
 	if (!$verbose) {
-		`wget --progress=bar -t3 $playlistURL 2>&1`;
+		`wget --progress=bar -t$retries $playlistURL 2>&1`;
 	} else {
-		`wget --progress=bar -t3 $playlistURL`;
+		`wget --progress=bar -t$retries $playlistURL`;
 	}
 }
 
@@ -120,11 +134,12 @@ while(<PLAYLIST>) {
 		}
 
 		# If verbose output is turned off, wget the mp3 and do error detection
+		my ($wgetSuccess);
 		if (!$verbose) {
-			my $wgetOutput = `wget -t3 $url 2>&1`;
+			my $wgetOutput = `wget -t$retries $limitRate $url 2>&1`;
 
 			# Check wget output to see if file actually downloaded (if saved bytes = total bytes)
-			my $wgetSuccess = 0;
+			$wgetSuccess = 0;
 			if ($wgetOutput =~ /saved \[(\d+)\/(\d+)\]/) {
 				if ($1 == $2) {
 					$wgetSuccess = 1;
@@ -133,11 +148,11 @@ while(<PLAYLIST>) {
 					print "ERROR!  Downloaded $1 bytes out of $2.\n\n";
 				}
 			} else {
-				print "ERROR!  Failure.  Downloaded ", (-s $urlFile), " bytes.\n\n";
+				print "ERROR! Failed after ", $retries+1, "attempt(s).  Downloaded ", (-s $urlFile), " bytes.\n\n";
 			}
 		# Otherwise, just wget the file and print all the output
 		} else {
-			`wget --progress=bar -t3 $url`;
+			`wget --progress=bar -t$retries $limitRate $url`;
 		}
 
 		# If we got some or all of the song, add the ID3 tag, rename the file
@@ -169,7 +184,7 @@ close(PLAYLIST);
 unlink($playlistFile) or print "Could not delete $playlistFile: $!\n\n";
 
 print "Downloaded $songCount songs.\n\n";
-if (@errorList != 0) {
+if (!$verbose && @errorList != 0) {
 	print "The following songs contained errors:\n";
 	print join("\n", @errorList);
 	print "\n\n";
