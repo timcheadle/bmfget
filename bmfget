@@ -1,29 +1,46 @@
 #!/usr/bin/perl
 
+use Getopt::Long;
 use MP3::Info;
 
 # Check command line arguments
-if (@ARGV != 1) {
-	die "Usage: $0 <url>\n\n";
+GetOptions(
+	'u=s' => \$playlistURL,
+	'f=s' => \$playlistFile,
+	'v'   => \$verbose
+);
+if (!($playlistURL xor $playlistFile)) {
+	die
+		"Usage: $0 [-v] <-f playlisti | -u url>\n\n".
+		"    -v         Verbose wget output (turns error detection off)\n".
+		"    -f file    Use file as the playlist to parse\n".
+		"    -u url     Download and parse playlist from url\n\n".
+		"    Either the file or url must be specified, but not both.\n\n";
 }
-$playlistURL = $ARGV[0];
 
-# Check URL syntax
-if ($playlistURL !~ /http:\/\/\S+\//) {
-	die "Invalid URL: $playlistURL\n\n";
+# If a URL was specified, download and format it
+if ($playlistURL) {
+	# Check URL syntax
+	if ($playlistURL !~ /http:\/\/\S+\//) {
+		die "Invalid URL: $playlistURL\n\n";
+	}
+
+	# Format the URL to not confuse the shell
+	$playlistFile = $playlistURL;
+	$playlistURL =~ s/&/\\&/g;
+
+	# Get the filename to expect to have downloaded
+	$playlistFile =~ s/.*\///g;
+
+	# Now download the playlist, removing any previous ones of the same name
+	print "Downloading playlist...\n";
+	`rm $playlistFile` if (-e $playlistFile);
+	if (!$verbose) {
+		`wget --progress=bar -t3 $playlistURL 2>&1`;
+	} else {
+		`wget --progress=bar -t3 $playlistURL`;
+	}
 }
-
-# Format the URL to not confuse the shell
-$playlistFile = $playlistURL;
-$playlistURL =~ s/&/\\&/g;
-
-# Get the filename to expect to have downloaded
-$playlistFile =~ s/.*\///g;
-
-# Now download the playlist, removing any previous ones of the same name
-print "Downloading playlist...\n";
-`rm $playlistFile` if (-e $playlistFile);
-`wget --progress=bar -t3 $playlistURL 2>&1`;
 
 # Open the playlist and parse it
 print "Parsing playlist...\n";
@@ -101,19 +118,26 @@ while(<PLAYLIST>) {
 		if (-e $urlFile) {
 			unlink($urlFile) or die "Cannot delete previos $urlFile: $!\n\n";
 		}
-		my $wgetOutput = `wget -t3 $url 2>&1`;
 
-		# Check wget output to see if file actually downloaded (if saved bytes = total bytes)
-		my $wgetSuccess = 0;
-		if ($wgetOutput =~ /saved \[(\d+)\/(\d+)\]/) {
-			if ($1 == $2) {
-				$wgetSuccess = 1;
-				print "Successfully downloaded $1 of $2 bytes.\n\n";
+		# If verbose output is turned off, wget the mp3 and do error detection
+		if (!$verbose) {
+			my $wgetOutput = `wget -t3 $url 2>&1`;
+
+			# Check wget output to see if file actually downloaded (if saved bytes = total bytes)
+			my $wgetSuccess = 0;
+			if ($wgetOutput =~ /saved \[(\d+)\/(\d+)\]/) {
+				if ($1 == $2) {
+					$wgetSuccess = 1;
+					print "Successfully downloaded $1 of $2 bytes.\n\n";
+				} else {
+					print "ERROR!  Downloaded $1 bytes out of $2.\n\n";
+				}
 			} else {
-				print "ERROR!  Downloaded $1 bytes out of $2.\n\n";
+				print "ERROR!  Failure.  Downloaded ", (-s $urlFile), " bytes.\n\n";
 			}
+		# Otherwise, just wget the file and print all the output
 		} else {
-			print "ERROR!  Failure.  Downloaded " . -s $urlFile . " bytes.\n\n";
+			`wget --progress=bar -t3 $url`;
 		}
 
 		# If we got some or all of the song, add the ID3 tag, rename the file
