@@ -12,18 +12,20 @@ if ($playlistURL !~ /http:\/\/\S+\//) {
 }
 
 # Format the URL to not confuse the shell
+$playlistFile = $playlistURL;
 $playlistURL =~ s/&/\\&/g;
 
 # Get the filename to expect to have downloaded
-$playlistFile = $playlistURL;
 $playlistFile =~ s/.*\///g;
 
 # Now download the playlist, removing any previous ones of the same name
 print "Downloading playlist...\n";
 `rm $playlistFile` if (-e $playlistFile);
-`wget -t3 $playlistURL`;
+`wget --progress=bar -t3 $playlistURL 2>&1`;
 
-open(PLAYLIST, $playlistFile) or die "Cannot open $playlistURL: $!\n\n";
+# Open the playlist and parse it
+print "Parsing playlist...\n";
+open(PLAYLIST, $playlistFile) or die "Cannot open $playlistFile: $!\n\n";
 while(<PLAYLIST>) {
 	chomp;
 	my $line = $_;
@@ -73,6 +75,7 @@ while(<PLAYLIST>) {
 		$minutes = $time / 60;
 		no integer;
 		$seconds = $time % 60;
+		$seconds = "0$seconds" if $seconds < 10;
 		
 		# Now make the proper directories
 		mkdir($artist);
@@ -90,20 +93,25 @@ while(<PLAYLIST>) {
 		print "   URL: $url\n";
 		print "  File: $urlFile\n";
 		print "SaveAs: $newFile\n";
-		print "\n\n";
+		print "\n";
 		
 		# Now wget the file
 		if (-e $urlFile) {
 			unlink($urlFile) or die "Cannot delete previos $urlFile: $!\n\n";
 		}
-		my $wgetOutput = `wget -t3 $url`;
+		my $wgetOutput = `wget -t3 $url 2>&1`;
 
-		# Check wget output to see if file actually downloaded
+		# Check wget output to see if file actually downloaded (if saved bytes = total bytes)
 		my $wgetSuccess = 0;
 		if ($wgetOutput =~ /saved \[(\d+)\/(\d+)\]/) {
 			if ($1 == $2) {
 				$wgetSuccess = 1;
+				print "Successfully downloaded $1 of $2 bytes.\n\n";
+			} else {
+				print "ERROR!  Downloaded $1 bytes out of $2.\n\n";
 			}
+		} else {
+			print "ERROR!  Failure.  Downloaded " . -s $urlFile . " bytes.\n\n";
 		}
 
 		# If we got some or all of the song, rename and put into the right directory
@@ -124,10 +132,11 @@ while(<PLAYLIST>) {
 }
 close(PLAYLIST);
 
-`rm $playlistFile`;
+unlink($playlistFile) or print "Could not delete $playlistFile: $!\n\n";
 
 print "Downloaded $songCount songs.\n\n";
 if (@errorList != 0) {
 	print "The following songs contained errors:\n";
 	print join("\n", @errorList);
+	print "\n\n";
 }
